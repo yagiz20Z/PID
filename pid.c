@@ -8,6 +8,22 @@
 #include "pid.h"
 #include <string.h> 
 
+PIDParameters_t pid;
+
+
+static saturation(float min, float max, float value)
+{
+    if (value > max) {
+        return max;
+    }
+
+    if (value < min) {
+        return min;
+    }
+
+    return value;
+}
+
 /**
  * @brief 
  * 
@@ -49,46 +65,69 @@ void PID_reset(PIDParameters_t* pid){
 }   
 
 /**
- * @brief 
- * 
- * @param pid 
- * @param limit 
- * @param anlik 
- * 
- * @note burada pid içerisinde p, i ve d'nin tüm işlemleri ayrı ayrı 
- * @note toplanıp pid değeri bulunmaktadır
+ * @brief PID cikisini hesaplar.
+ *
+ * @param pid       PID yapisinin adresi
+ * @param angle     Olculen anlik deger
+ * @param limit     Hedef deger
+ * @param Dt_ms     Ornekleme suresi, milisaniye cinsinden
+ * @param MotorFlag 1 ise PID aktif, 0 ise PID resetlenir
+ *
+ * @return MIN_PID ile MAX_PID arasinda sinirlanmis PID cikisi
  */
-float PID_Currently(PIDParameters_t* pid, float angle, float limit, uint32_t Dt, uint8_t MotorFlag){
-    
-    if (pid == NULL){
+float PID_Currently(PIDParameters_t* pid,
+                    float angle,
+                    float limit,
+                    uint32_t Dt_ms,
+                    uint8_t MotorFlag)
+{
+    if (pid == NULL) {
         return 0.0f;
-    }    
-
-    float error;
-    error = limit - angle;
-    // proportional 
-    float Proportional  = pid-> kp * error;
-
-    // Integral
-    if (MotorFlag == 0 || fabs(error)< AKU_ERROR_THRESHOLD){
-        pid->integralBirikimi = 0;
     }
 
-      pid -> integralBirikimi += error * Dt;
-      pid-> integralBirikimi = saturation(AKU_INTEGRAL_MIN_WINDUP_THRESHOLD, AKU_INTEGRAL_MAX_WINDUP_THRESHOLD, pid->integralBirikimi);
-      float integral;
-      integral = pid->ki * pid->integralBirikimi;
+    /* Sifira bolme ve hatali zaman olcumunu engeller */
+    if (Dt_ms == 0U) {
+        return 0.0f;
+    }
 
-    // Derivative
-    float derivative_Coefficient = (error - pid->prev_error)/Dt;
-    pid->prev_error = error;
+    /* Motor pasifse PID hafizasini temizle ve cikisi sifirla */
+    if (MotorFlag == 0U) {
+        PID_reset(pid);
+        return 0.0f;
+    }
+
+    /* PID hesabinda zaman saniye cinsinden kullanilir */
+    float dt = (float)Dt_ms / 1000.0f;
+
+    float error = limit - angle;
+
+    /* P: Oransal kontrol */
+    float proportional = pid->kp * error;
+
+    /* I: Integral kontrol */
+    if (fabsf(error) < AKU_ERROR_THRESHOLD) {
+        pid->integralBirikimi = 0.0f;
+    } else {
+        pid->integralBirikimi += error * dt;
+
+        pid->integralBirikimi = saturation(
+            AKU_INTEGRAL_MIN_WINDUP_THRESHOLD,
+            AKU_INTEGRAL_MAX_WINDUP_THRESHOLD,
+            pid->integralBirikimi
+        );
+    }
+
+    float integral = pid->ki * pid->integralBirikimi;
+
+    /* D: Turev kontrol */
+    float derivative_Coefficient = (error - pid->prev_error) / dt;
     float derivative = pid->kd * derivative_Coefficient;
 
-    float PID_output;
-    PID_output = Proportional + integral + derivative;
+    pid->prev_error = error;
 
-    float deger = saturation(MIN_PID, MAX_PID, PID_output);
+    float PID_output = proportional + integral + derivative;
 
-    return deger;
-
+    return saturation(MIN_PID, MAX_PID, PID_output);
 }
+
+
