@@ -20,7 +20,7 @@
 #define MIN_PID                            -30.0f
 
 extern uint8_t Motor_Flag_Status;
-
+// deneme
 typedef struct PIDParameters_t{
     float kp;
     float ki;
